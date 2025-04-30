@@ -35,64 +35,46 @@ class ChurnPredictor:
     def _build_model(self) -> models.Sequential:
         """Build the neural network architecture"""
         model = models.Sequential([
-            # Input layer with L2 regularization
-            layers.Dense(32, activation='relu', 
-                        kernel_regularizer=tf.keras.regularizers.l2(0.01),
-                        input_shape=(self.input_dim,)),
+            # Input layer
+            layers.Dense(64, activation='relu', input_shape=(self.input_dim,)),
             layers.BatchNormalization(),
-            layers.Dropout(0.4),
+            layers.Dropout(0.3),
             
-            # Hidden layer with L2 regularization
-            layers.Dense(16, activation='relu',
-                        kernel_regularizer=tf.keras.regularizers.l2(0.01)),
+            # Hidden layer
+            layers.Dense(32, activation='relu'),
             layers.BatchNormalization(),
-            layers.Dropout(0.4),
+            layers.Dropout(0.3),
             
             # Output layer
             layers.Dense(1, activation='sigmoid')
         ])
         
-        # Compile model with lower learning rate
-        optimizer = tf.keras.optimizers.Adam(learning_rate=0.0005)
+        # Compile model
+        optimizer = tf.keras.optimizers.Adam(learning_rate=self.config['learning_rate'])
         model.compile(
             optimizer=optimizer,
             loss='binary_crossentropy',
-            metrics=[
-                'accuracy',
-                tf.keras.metrics.AUC(name='auc'),
-                tf.keras.metrics.Precision(name='precision'),
-                tf.keras.metrics.Recall(name='recall')
-            ]
+            metrics=['accuracy']
         )
         
         return model
     
     def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, Any]:
         """Train the model"""
-        # Early stopping with increased patience
+        # Early stopping
         early_stopping = tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=15,
-            restore_best_weights=True,
-            verbose=1
+            patience=self.config['early_stopping_patience'],
+            restore_best_weights=True
         )
         
-        # Learning rate reduction with gentler factor
-        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.7,
-            patience=7,
-            min_lr=0.000001,
-            verbose=1
-        )
-        
-        # Train with smaller batch size
+        # Train model
         self.history = self.model.fit(
             X_train, y_train,
             validation_data=(X_val, y_val),
-            epochs=100,
-            batch_size=16,
-            callbacks=[early_stopping, reduce_lr],
+            epochs=self.config['epochs'],
+            batch_size=self.config['batch_size'],
+            callbacks=[early_stopping],
             verbose=1
         )
         
@@ -138,6 +120,57 @@ class ChurnPredictor:
             print(f"Model loaded from {filepath}")
         else:
             raise FileNotFoundError(f"No model found at {filepath}")
+    
+    def plot_training_history(self):
+        """Plot training history"""
+        if self.history is None:
+            raise ValueError("No training history available")
+        
+        plt.figure(figsize=(12, 4))
+        
+        # Plot accuracy
+        plt.subplot(1, 2, 1)
+        plt.plot(self.history.history['accuracy'], label='Training Accuracy')
+        plt.plot(self.history.history['val_accuracy'], label='Validation Accuracy')
+        plt.title('Model Accuracy')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.legend()
+        
+        # Plot loss
+        plt.subplot(1, 2, 2)
+        plt.plot(self.history.history['loss'], label='Training Loss')
+        plt.plot(self.history.history['val_loss'], label='Validation Loss')
+        plt.title('Model Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_confusion_matrix(self, y_test: np.ndarray, y_pred: np.ndarray):
+        """Plot confusion matrix"""
+        cm = confusion_matrix(y_test, y_pred)
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.title('Confusion Matrix')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.show()
+    
+    def plot_roc_curve(self, fpr: np.ndarray, tpr: np.ndarray, roc_auc: float):
+        """Plot ROC curve"""
+        plt.figure(figsize=(8, 6))
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic (ROC) Curve')
+        plt.legend(loc="lower right")
+        plt.show()
 
 def prepare_data_for_modeling(X: pd.DataFrame, y: pd.Series) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Prepare data for modeling"""
@@ -170,5 +203,12 @@ if __name__ == "__main__":
     print("\nModel Evaluation Metrics:")
     print(metrics['classification_report'])
     
+    # Plot results
+    model.plot_training_history()
+    model.plot_confusion_matrix(y_test, (model.predict(X_test) > 0.5).astype(int))
+    model.plot_roc_curve(metrics['fpr'], metrics['tpr'], metrics['roc_auc'])
+    
     # Save model
-    model.save_model('models/churn_model.h5') 
+    #model.save_model('models/churn_model.h5') 
+    model.save_model('models/churn_model.weights.h5')
+

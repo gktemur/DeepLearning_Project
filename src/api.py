@@ -3,12 +3,10 @@ from pydantic import BaseModel
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Any
-import joblib
 import os
 from dotenv import load_dotenv
 from feature_engineering import FeatureEngineering, FeatureConfig
 from model import ChurnPredictor
-from sklearn.preprocessing import StandardScaler
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +20,6 @@ app = FastAPI(
 # Initialize feature engineering and model
 feature_engineering = FeatureEngineering(FeatureConfig())
 model = None
-scaler = StandardScaler()
 
 class CustomerData(BaseModel):
     """Input data model for customer features"""
@@ -41,15 +38,12 @@ class PredictionResponse(BaseModel):
 
 def load_model():
     """Load the trained model"""
-    global model, scaler
+    global model
     try:
         if model is None:
             # Load and prepare data for model initialization
             X, y = feature_engineering.prepare_data()
             model = ChurnPredictor(input_dim=X.shape[1])
-            
-            # Fit scaler with training data
-            scaler.fit(X)
             
             # Try to load saved model weights
             model_path = os.path.join('models', 'churn_model.h5')
@@ -108,11 +102,8 @@ async def predict_churn(customer_data: CustomerData):
             customer_data.monetary_score
         ]])
         
-        # Scale features
-        features_scaled = scaler.transform(features)
-        
         # Make prediction
-        churn_probability = float(model.predict(features_scaled)[0][0])
+        churn_probability = float(model.predict(features)[0][0])
         will_churn = churn_probability > 0.5
         confidence = abs(churn_probability - 0.5) * 2  # Convert to 0-1 scale
         
@@ -150,11 +141,8 @@ async def predict_churn_batch(customers_data: List[CustomerData]):
             customer.monetary_score
         ] for customer in customers_data])
         
-        # Scale features
-        features_scaled = scaler.transform(features)
-        
         # Make predictions
-        probabilities = model.predict(features_scaled)
+        probabilities = model.predict(features)
         
         # Prepare response
         predictions = []
