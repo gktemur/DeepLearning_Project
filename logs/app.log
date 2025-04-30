@@ -1,0 +1,60 @@
+2025-04-30 20:59:20,929 - __main__ - INFO - Successfully fetched 91 customer records
+2025-04-30 20:59:20,949 - __main__ - INFO - Successfully fetched 830 order records
+2025-04-30 20:59:20,958 - __main__ - INFO - Successfully fetched 2155 order detail records
+2025-04-30 20:59:31,655 - data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 20:59:31,667 - data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 20:59:31,678 - data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:01:08,686 - data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:01:08,699 - data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:01:08,709 - data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:01:25,219 - data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:01:25,234 - data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:01:25,245 - data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:05:25,358 - data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:05:25,373 - data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:05:25,383 - data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:20:45,387 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:20:45,401 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:20:45,412 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:20:49,580 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:20:49,604 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:20:49,615 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:21:30,027 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:21:30,055 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:21:30,071 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:27:14,495 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:27:14,510 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:27:14,522 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:27:25,411 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:27:25,424 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:27:25,438 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:30:25,875 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:30:25,892 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:30:25,904 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:30:29,817 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:30:29,830 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:30:29,841 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:31:33,716 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:31:33,731 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:31:33,744 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:31:39,278 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:31:39,293 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:31:39,304 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:33:32,270 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:33:32,285 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:33:32,296 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:33:36,503 - src.data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:33:36,518 - src.data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:33:36,529 - src.data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:52:52,747 - __main__ - INFO - Successfully fetched 91 customer records
+2025-04-30 21:52:52,760 - __main__ - INFO - Successfully fetched 830 order records
+2025-04-30 21:52:52,772 - __main__ - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:53:07,590 - data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:53:07,605 - data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:53:07,619 - data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 21:57:41,516 - data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 21:57:41,543 - data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 21:57:41,555 - data_loader - INFO - Successfully fetched 2155 order detail records
+2025-04-30 22:00:55,589 - data_loader - INFO - Successfully fetched 91 customer records
+2025-04-30 22:00:55,604 - data_loader - INFO - Successfully fetched 830 order records
+2025-04-30 22:00:55,619 - data_loader - INFO - Successfully fetched 2155 order detail records

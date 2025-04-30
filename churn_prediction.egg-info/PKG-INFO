@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: churn_prediction
+Version: 0.1
+Requires-Dist: tensorflow
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: scikit-learn
+Requires-Dist: imbalanced-learn
+Requires-Dist: matplotlib
+Requires-Dist: seaborn
