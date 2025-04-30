@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from typing import Tuple, List, Dict
 import pandas as pd
 import numpy as np
-from data_loader import DataLoader
+from src.data_loader import DataLoader
+from sklearn.preprocessing import StandardScaler
+from imblearn.over_sampling import SMOTE
 
 @dataclass
 class FeatureConfig:
@@ -73,6 +75,8 @@ class FeatureEngineering:
     def __init__(self, config: FeatureConfig):
         self.config = config
         self.data_loader = DataLoader()
+        self.scaler = StandardScaler()
+        self.smote = SMOTE(random_state=42)
 
     def _load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Load data from database"""
@@ -112,6 +116,19 @@ class FeatureEngineering:
         
         return data
 
+    def _handle_class_imbalance(self, X: pd.DataFrame, y: pd.Series) -> Tuple[pd.DataFrame, pd.Series]:
+        """Handle class imbalance using SMOTE"""
+        X_resampled, y_resampled = self.smote.fit_resample(X, y)
+        return X_resampled, y_resampled
+
+    def _scale_features(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Scale features using StandardScaler"""
+        return pd.DataFrame(
+            self.scaler.fit_transform(X),
+            columns=X.columns,
+            index=X.index
+        )
+
     def prepare_data(self) -> Tuple[pd.DataFrame, pd.Series]:
         """Main method to prepare data for modeling"""
         # Load data
@@ -136,7 +153,13 @@ class FeatureEngineering:
         X = processed_data[self.config.feature_columns]
         y = processed_data[self.config.target_column]
         
-        return X, y
+        # Handle class imbalance
+        X_resampled, y_resampled = self._handle_class_imbalance(X, y)
+        
+        # Scale features
+        X_scaled = self._scale_features(X_resampled)
+        
+        return X_scaled, y_resampled
 
 if __name__ == "__main__":
     # Initialize feature engineering

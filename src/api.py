@@ -5,8 +5,9 @@ import pandas as pd
 from typing import List, Dict, Any
 import os
 from dotenv import load_dotenv
-from feature_engineering import FeatureEngineering, FeatureConfig
-from model import ChurnPredictor
+from src.feature_engineering import FeatureEngineering, FeatureConfig
+from src.model import ChurnPredictor
+import joblib
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +21,7 @@ app = FastAPI(
 # Initialize feature engineering and model
 feature_engineering = FeatureEngineering(FeatureConfig())
 model = None
+scaler = None
 
 class CustomerData(BaseModel):
     """Input data model for customer features"""
@@ -37,8 +39,8 @@ class PredictionResponse(BaseModel):
     confidence: float
 
 def load_model():
-    """Load the trained model"""
-    global model
+    """Load the trained model and scaler"""
+    global model, scaler
     try:
         if model is None:
             # Load and prepare data for model initialization
@@ -52,6 +54,10 @@ def load_model():
                 print(f"Model loaded from {model_path}")
             else:
                 print("No saved model found. Using untrained model.")
+            
+            # Save scaler for later use
+            scaler = feature_engineering.scaler
+            joblib.dump(scaler, 'models/scaler.joblib')
     except Exception as e:
         print(f"Error loading model: {str(e)}")
         raise
@@ -77,7 +83,8 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "model_loaded": model is not None
+        "model_loaded": model is not None,
+        "scaler_loaded": scaler is not None
     }
 
 @app.post("/predict", response_model=PredictionResponse)
@@ -102,8 +109,11 @@ async def predict_churn(customer_data: CustomerData):
             customer_data.monetary_score
         ]])
         
+        # Scale features
+        features_scaled = scaler.transform(features)
+        
         # Make prediction
-        churn_probability = float(model.predict(features)[0][0])
+        churn_probability = float(model.predict(features_scaled)[0][0])
         will_churn = churn_probability > 0.5
         confidence = abs(churn_probability - 0.5) * 2  # Convert to 0-1 scale
         
@@ -141,8 +151,11 @@ async def predict_churn_batch(customers_data: List[CustomerData]):
             customer.monetary_score
         ] for customer in customers_data])
         
+        # Scale features
+        features_scaled = scaler.transform(features)
+        
         # Make predictions
-        probabilities = model.predict(features)
+        probabilities = model.predict(features_scaled)
         
         # Prepare response
         predictions = []

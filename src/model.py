@@ -8,7 +8,7 @@ from typing import Tuple, Dict, Any
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-from feature_engineering import FeatureEngineering, FeatureConfig
+from src.feature_engineering import FeatureEngineering, FeatureConfig
 
 class ChurnPredictor:
     """Deep learning model for customer churn prediction"""
