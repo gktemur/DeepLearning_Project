@@ -2,13 +2,12 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import SMOTE
 from data_loader import DataLoader
-import os
 
 @dataclass
 class FeatureConfig:
@@ -71,99 +70,96 @@ class RFMFeatureProcessor(FeatureProcessor):
         return data
 
 class FeatureEngineering:
-    """Feature engineering for customer churn prediction"""
+    """Main class for feature engineering process"""
     
     def __init__(self, config: FeatureConfig):
         self.config = config
+        self.data_loader = DataLoader()
         self.scaler = StandardScaler()
-        
-    def load_data(self) -> pd.DataFrame:
-        """Load data from CSV files"""
-        # Load customer data
-        customers_df = pd.read_csv('data/customers.csv')
-        
-        # Load order data
-        orders_df = pd.read_csv('data/orders.csv')
-        
-        # Load order details
-        order_details_df = pd.read_csv('data/order_details.csv')
-        
-        return customers_df, orders_df, order_details_df
-    
-    def prepare_data(self) -> Tuple[np.ndarray, np.ndarray]:
-        """Prepare data for modeling"""
-        # Load data
-        customers_df, orders_df, order_details_df = self.load_data()
-        
-        # Calculate features
-        features_df = self._calculate_features(customers_df, orders_df, order_details_df)
-        
-        # Split features and target
-        X = features_df[self.config.feature_columns].values
-        y = features_df[self.config.target_column].values
-        
-        # Scale features
-        X = self.scaler.fit_transform(X)
-        
-        return X, y
-    
-    def _calculate_features(self, customers_df: pd.DataFrame, 
-                          orders_df: pd.DataFrame, 
-                          order_details_df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate features for modeling"""
-        # Merge order details with orders
-        order_details = pd.merge(
-            order_details_df,
-            orders_df[['order_id', 'customer_id', 'order_date']],
-            on='order_id'
+        self.smote = SMOTE(random_state=42)
+
+    def _load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Load data from database"""
+        return (
+            self.data_loader.fetch_customers(),
+            self.data_loader.fetch_orders(),
+            self.data_loader.fetch_order_details()
         )
+
+    def _calculate_order_metrics(self, orders_df: pd.DataFrame, order_details_df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate basic order metrics"""
+        # Calculate total order value
+        order_details_df['total_order_value'] = order_details_df['quantity'] * order_details_df['unit_price']
+        total_spending = order_details_df.groupby('order_id')['total_order_value'].sum().reset_index()
         
-        # Calculate total order value and count per customer
-        customer_orders = order_details.groupby('customer_id').agg({
-            'unit_price': 'sum',
-            'order_id': 'count'
-        }).rename(columns={
-            'unit_price': 'total_order_value',
-            'order_id': 'order_count'
-        })
+        # Calculate order count
+        order_count = orders_df.groupby('customer_id').size().reset_index(name='order_count')
+        
+        # Merge metrics
+        order_summary = orders_df.merge(order_count, on='customer_id', how='left')
+        order_summary = order_summary.merge(total_spending, on='order_id', how='left')
         
         # Calculate average order value
-        customer_orders['average_order_value'] = (
-            customer_orders['total_order_value'] / customer_orders['order_count']
+        order_summary['average_order_value'] = order_summary['total_order_value'] / order_summary['order_count']
+        
+        return order_summary
+
+    def _process_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Process features using various processors"""
+        processors = [
+            TemporalFeatureProcessor(),
+            RFMFeatureProcessor(self.config.reference_date)
+        ]
+        
+        for processor in processors:
+            data = processor.process(data)
+        
+        return data
+
+    def _handle_class_imbalance(self, X: pd.DataFrame, y: pd.Series) -> Tuple[pd.DataFrame, pd.Series]:
+        """Handle class imbalance using SMOTE"""
+        X_resampled, y_resampled = self.smote.fit_resample(X, y)
+        return X_resampled, y_resampled
+
+    def _scale_features(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Scale features using StandardScaler"""
+        return pd.DataFrame(
+            self.scaler.fit_transform(X),
+            columns=X.columns,
+            index=X.index
+        )
+
+    def prepare_data(self) -> Tuple[pd.DataFrame, pd.Series]:
+        """Main method to prepare data for modeling"""
+        # Load data
+        customers_df, orders_df, order_details_df = self._load_data()
+        
+        # Calculate basic metrics
+        order_summary = self._calculate_order_metrics(orders_df, order_details_df)
+        
+        # Process features
+        processed_data = self._process_features(order_summary)
+        
+        # Calculate churn
+        processed_data['months_since_last_order'] = (
+            pd.to_datetime(self.config.reference_date) - processed_data['last_order_date']
+        ).dt.days // 30
+        
+        processed_data[self.config.target_column] = processed_data['months_since_last_order'].apply(
+            lambda x: 1 if x >= self.config.churn_threshold_months else 0
         )
         
-        # Calculate recency (days since last order)
-        latest_order = order_details.groupby('customer_id')['order_date'].max()
-        latest_order = pd.to_datetime(latest_order)
-        current_date = pd.to_datetime('2024-01-01')  # Example current date
-        customer_orders['recency_days'] = (current_date - latest_order).dt.days
+        # Prepare final features
+        X = processed_data[self.config.feature_columns]
+        y = processed_data[self.config.target_column]
         
-        # Calculate frequency score (1-5)
-        customer_orders['frequency_score'] = pd.qcut(
-            customer_orders['order_count'],
-            q=5,
-            labels=[1, 2, 3, 4, 5]
-        ).astype(int)
+        # Handle class imbalance
+        X_resampled, y_resampled = self._handle_class_imbalance(X, y)
         
-        # Calculate monetary score (1-5)
-        customer_orders['monetary_score'] = pd.qcut(
-            customer_orders['total_order_value'],
-            q=5,
-            labels=[1, 2, 3, 4, 5]
-        ).astype(int)
+        # Scale features
+        X_scaled = self._scale_features(X_resampled)
         
-        # Merge with customers
-        features_df = pd.merge(
-            customers_df,
-            customer_orders,
-            on='customer_id',
-            how='left'
-        )
-        
-        # Fill missing values
-        features_df = features_df.fillna(0)
-        
-        return features_df
+        return X_scaled, y_resampled
 
 if __name__ == "__main__":
     # Initialize feature engineering
