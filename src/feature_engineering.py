@@ -8,6 +8,8 @@ import numpy as np
 from src.data_loader import DataLoader
 from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import RobustScaler
+import joblib
 
 @dataclass
 class FeatureConfig:
@@ -25,7 +27,13 @@ class FeatureConfig:
                 'average_order_value',
                 'recency_days',
                 'frequency_score',
-                'monetary_score'
+                'monetary_score',
+                'is_recent',
+                'is_one_time_customer',
+                'is_high_value',
+                'is_frequent', 
+                'is_low_spender', 
+                'has_large_order'
             ]
 
 class FeatureProcessor(ABC):
@@ -76,7 +84,6 @@ class FeatureEngineering:
         self.config = config
         self.data_loader = DataLoader()
         self.scaler = StandardScaler()
-        self.smote = SMOTE(random_state=42)
 
     def _load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Load data from database"""
@@ -116,18 +123,44 @@ class FeatureEngineering:
         
         return data
 
-    def _handle_class_imbalance(self, X: pd.DataFrame, y: pd.Series) -> Tuple[pd.DataFrame, pd.Series]:
-        """Handle class imbalance using SMOTE"""
-        X_resampled, y_resampled = self.smote.fit_resample(X, y)
-        return X_resampled, y_resampled
+    def _clean_data(self, X: pd.DataFrame, y: pd.Series) -> Tuple[pd.DataFrame, pd.Series]:
+        """Clean data by handling missing values"""
+        # Drop rows with NaN values
+        X_clean = X.dropna()
+        y_clean = y[X_clean.index]
+        
+        # Reset index after dropping rows
+        X_clean = X_clean.reset_index(drop=True)
+        y_clean = y_clean.reset_index(drop=True)
+        
+        return X_clean, y_clean
 
     def _scale_features(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Scale features using StandardScaler"""
-        return pd.DataFrame(
+        """Scale features using RobustScaler for better handling of outliers"""
+        self.scaler = RobustScaler()
+        X_scaled = pd.DataFrame(
             self.scaler.fit_transform(X),
             columns=X.columns,
             index=X.index
         )
+        
+        # Save the scaler for later use
+        joblib.dump(self.scaler, 'models/scaler.joblib')
+        return X_scaled
+
+    def _handle_class_imbalance(self, X: pd.DataFrame, y: pd.Series) -> Tuple[pd.DataFrame, pd.Series]:
+        """Handle class imbalance using SMOTE"""
+        # First clean the data
+        X_clean, y_clean = self._clean_data(X, y)
+        
+        # Then apply SMOTE with adjusted sampling strategy
+        smote = SMOTE(
+            random_state=42,
+            sampling_strategy=0.8,  # Increase minority class to 80% of majority
+            k_neighbors=3  # Reduced neighbors for more distinct samples
+        )
+        X_resampled, y_resampled = smote.fit_resample(X_clean, y_clean)
+        return X_resampled, y_resampled
 
     def prepare_data(self) -> Tuple[pd.DataFrame, pd.Series]:
         """Main method to prepare data for modeling"""
@@ -148,18 +181,50 @@ class FeatureEngineering:
         processed_data[self.config.target_column] = processed_data['months_since_last_order'].apply(
             lambda x: 1 if x >= self.config.churn_threshold_months else 0
         )
-        
-        # Prepare final features
+
+        # Add binary features with adjusted thresholds
+        processed_data['is_recent'] = (processed_data['recency_days'] < 30).astype(int)  # Reduced from 60
+        processed_data['is_one_time_customer'] = (processed_data['order_count'] == 1).astype(int)
+        processed_data['is_high_value'] = (processed_data['monetary_score'] > processed_data['monetary_score'].quantile(0.8)).astype(int)
+        processed_data['is_frequent'] = (processed_data['frequency_score'] > 7).astype(int)
+        processed_data['is_low_spender'] = (processed_data['monetary_score'] < processed_data['monetary_score'].quantile(0.2)).astype(int)
+        processed_data['has_large_order'] = (processed_data['average_order_value'] > 1500).astype(int)
+
+        # Add recency score as a new feature
+        processed_data['recency_score'] = np.where(
+            processed_data['recency_days'] < 30, 1,
+            np.where(processed_data['recency_days'] < 90, 0.5,
+            np.where(processed_data['recency_days'] < 180, 0.2, 0))
+        )
+
+        # Update feature columns to include recency_score
+        self.config.feature_columns.append('recency_score')
+
+        # Final feature set
         X = processed_data[self.config.feature_columns]
         y = processed_data[self.config.target_column]
-        
-        # Handle class imbalance
+
+        # Print data quality information
+        print("\nData Quality Information:")
+        print("Number of samples before cleaning:", len(X))
+        print("Number of missing values per feature:")
+        print(X.isnull().sum())
+        print("\nClass distribution before balancing:")
+        print(y.value_counts(normalize=True))
+
+        # Handle class imbalance using SMOTE
         X_resampled, y_resampled = self._handle_class_imbalance(X, y)
+        
+        print("\nData Quality Information after cleaning:")
+        print("Number of samples after cleaning:", len(X_resampled))
+        print("\nClass distribution after balancing:")
+        print(y_resampled.value_counts(normalize=True))
         
         # Scale features
         X_scaled = self._scale_features(X_resampled)
         
         return X_scaled, y_resampled
+
 
 if __name__ == "__main__":
     # Initialize feature engineering

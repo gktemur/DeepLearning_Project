@@ -31,6 +31,13 @@ class CustomerData(BaseModel):
     recency_days: int
     frequency_score: int
     monetary_score: float
+    is_recent: int
+    is_one_time_customer: int
+    is_high_value: int
+    is_frequent: int
+    is_low_spender: int
+    has_large_order: int
+    recency_score: float
 
 class PredictionResponse(BaseModel):
     """Output data model for predictions"""
@@ -106,7 +113,14 @@ async def predict_churn(customer_data: CustomerData):
             customer_data.average_order_value,
             customer_data.recency_days,
             customer_data.frequency_score,
-            customer_data.monetary_score
+            customer_data.monetary_score,
+            customer_data.is_recent,
+            customer_data.is_one_time_customer,
+            customer_data.is_high_value,
+            customer_data.is_frequent,
+            customer_data.is_low_spender,
+            customer_data.has_large_order,
+            customer_data.recency_score
         ]])
         
         # Scale features
@@ -114,8 +128,8 @@ async def predict_churn(customer_data: CustomerData):
         
         # Make prediction
         churn_probability = float(model.predict(features_scaled)[0][0])
-        will_churn = churn_probability > 0.5
-        confidence = abs(churn_probability - 0.5) * 2  # Convert to 0-1 scale
+        will_churn = churn_probability > 0.4
+        confidence = abs(churn_probability - 0.4) * 2
         
         return PredictionResponse(
             churn_probability=churn_probability,
@@ -148,7 +162,14 @@ async def predict_churn_batch(customers_data: List[CustomerData]):
             customer.average_order_value,
             customer.recency_days,
             customer.frequency_score,
-            customer.monetary_score
+            customer.monetary_score,
+            customer.is_recent,
+            customer.is_one_time_customer,
+            customer.is_high_value,
+            customer.is_frequent,
+            customer.is_low_spender,
+            customer.has_large_order,
+            customer.recency_score
         ] for customer in customers_data])
         
         # Scale features

@@ -8,6 +8,7 @@ from typing import Tuple, Dict, Any
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+from sklearn.utils import class_weight
 from src.feature_engineering import FeatureEngineering, FeatureConfig
 
 class ChurnPredictor:
@@ -33,51 +34,86 @@ class ChurnPredictor:
         self.history = None
         
     def _build_model(self) -> models.Sequential:
-        """Build the neural network architecture"""
+        """Build the improved neural network architecture"""
         model = models.Sequential([
-            # Input layer
-            layers.Dense(64, activation='relu', input_shape=(self.input_dim,)),
+            layers.Dense(256, activation='relu', input_shape=(self.input_dim,)),
+            layers.BatchNormalization(),
+            layers.Dropout(0.5),
+            layers.Dense(128, activation='relu'),
+            layers.BatchNormalization(),
+            layers.Dropout(0.4),
+            layers.Dense(64, activation='relu'),
             layers.BatchNormalization(),
             layers.Dropout(0.3),
-            
-            # Hidden layer
-            layers.Dense(32, activation='relu'),
-            layers.BatchNormalization(),
-            layers.Dropout(0.3),
-            
-            # Output layer
             layers.Dense(1, activation='sigmoid')
         ])
-        
-        # Compile model
-        optimizer = tf.keras.optimizers.Adam(learning_rate=self.config['learning_rate'])
+
+        # Compile model with adjusted learning rate and class weights
+        optimizer = tf.keras.optimizers.Adam(learning_rate=0.00001)
         model.compile(
             optimizer=optimizer,
             loss='binary_crossentropy',
-            metrics=['accuracy']
+            metrics=[
+                'accuracy',
+                tf.keras.metrics.AUC(name='auc'),
+                tf.keras.metrics.Precision(name='precision'),
+                tf.keras.metrics.Recall(name='recall')
+            ]
         )
-        
+
         return model
+
     
     def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, Any]:
-        """Train the model"""
-        # Early stopping
+        """Train the model with improved handling of class imbalance"""
+        # Calculate class weights with higher emphasis on minority class
+        weights = class_weight.compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(y_train),
+            y=y_train
+        )
+        # Increase weight for minority class
+        weights[1] *= 3  # Triple the weight for churn class
+        class_weights = dict(zip(np.unique(y_train), weights))
+        print("Computed class weights:", class_weights)
+
+        # Early stopping with improved patience
         early_stopping = tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=self.config['early_stopping_patience'],
-            restore_best_weights=True
+            monitor='val_auc',
+            patience=30,
+            restore_best_weights=True,
+            mode='max'
         )
-        
-        # Train model
+
+        # Learning rate scheduler
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_auc',
+            factor=0.2,
+            patience=15,
+            min_lr=1e-7,
+            mode='max'
+        )
+
+        # Model checkpoint
+        checkpoint = tf.keras.callbacks.ModelCheckpoint(
+            'models/best_model.keras',
+            monitor='val_auc',
+            save_best_only=True,
+            mode='max'
+        )
+
+        # Train model with callbacks
         self.history = self.model.fit(
-            X_train, y_train,
-            validation_data=(X_val, y_val),
-            epochs=self.config['epochs'],
-            batch_size=self.config['batch_size'],
-            callbacks=[early_stopping],
-            verbose=1
+            X_train.to_numpy(),
+            y_train.to_numpy(),
+            validation_data=(X_val.to_numpy(), y_val.to_numpy()),
+            epochs=300,  # Increased epochs
+            batch_size=32,  # Reduced batch size
+            callbacks=[early_stopping, reduce_lr, checkpoint],
+            verbose=1,
+            class_weight=class_weights
         )
-        
+
         return self.history.history
     
     def evaluate(self, X_test: np.ndarray, y_test: np.ndarray) -> Dict[str, float]:
@@ -116,7 +152,7 @@ class ChurnPredictor:
     def load_model(self, filepath: str):
         """Load model weights"""
         if os.path.exists(filepath):
-            self.model.load_weights(filepath)
+            self.model = tf.keras.models.load_model(filepath)
             print(f"Model loaded from {filepath}")
         else:
             raise FileNotFoundError(f"No model found at {filepath}")
@@ -211,4 +247,9 @@ if __name__ == "__main__":
     # Save model
     #model.save_model('models/churn_model.h5') 
     model.save_model('models/churn_model.weights.h5')
+    y_pred = model.predict(X_test)
+    print("Tahminler:", y_pred[:10])
+    print(pd.Series(y_train).value_counts())
+
+
 
