@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from src.feature_engineering import FeatureEngineering, FeatureConfig
 from src.model import ChurnPredictor
 import joblib
+from src.feature_engineering_iade import IadeFeatureEngineering, IadeFeatureConfig
+from src.model_iade import IadeRiskPredictor
 
 # Load environment variables
 load_dotenv()
@@ -22,6 +24,11 @@ app = FastAPI(
 feature_engineering = FeatureEngineering(FeatureConfig())
 model = None
 scaler = None
+
+# Initialize iade risk predictor
+iade_feature_engineering = IadeFeatureEngineering()
+iade_model = None
+iade_scaler = None
 
 class CustomerData(BaseModel):
     """Input data model for customer features"""
@@ -43,6 +50,18 @@ class PredictionResponse(BaseModel):
     """Output data model for predictions"""
     churn_probability: float
     will_churn: bool
+    confidence: float
+
+class IadeData(BaseModel):
+    """Input data model for return risk prediction"""
+    discount: float
+    quantity: int
+    total_spending: float
+
+class IadePredictionResponse(BaseModel):
+    """Output data model for return risk predictions"""
+    risk_probability: float
+    is_risky: bool
     confidence: float
 
 def load_model():
@@ -69,10 +88,37 @@ def load_model():
         print(f"Error loading model: {str(e)}")
         raise
 
+def load_iade_model():
+    """Load the trained iade model and scaler"""
+    global iade_model, iade_scaler
+    try:
+        if iade_model is None:
+            # Load and prepare data for model initialization
+            X_train, _, y_train, _ = iade_feature_engineering.prepare_data()
+            iade_model = IadeRiskPredictor(input_dim=X_train.shape[1])
+            
+            # Try to load saved model
+            model_path = os.path.join('models', 'best_iade_model.keras')
+            if os.path.exists(model_path):
+                iade_model.load_model(model_path)
+                print(f"Iade model loaded from {model_path}")
+            else:
+                print("No saved iade model found. Using untrained model.")
+            
+            # Load scaler
+            scaler_path = os.path.join('models', 'iade_scaler.joblib')
+            if os.path.exists(scaler_path):
+                iade_scaler = joblib.load(scaler_path)
+                print(f"Iade scaler loaded from {scaler_path}")
+    except Exception as e:
+        print(f"Error loading iade model: {str(e)}")
+        raise
+
 @app.on_event("startup")
 async def startup_event():
-    """Initialize model on startup"""
+    """Initialize models on startup"""
     load_model()
+    load_iade_model()
 
 @app.get("/")
 async def root():
@@ -81,7 +127,8 @@ async def root():
         "message": "Customer Churn Prediction API",
         "endpoints": {
             "/predict": "POST - Make churn predictions",
-            "/health": "GET - Check API health"
+            "/health": "GET - Check API health",
+            "/predict-iade": "POST - Predict return risk for an order"
         }
     }
 
@@ -197,6 +244,45 @@ async def predict_churn_batch(customers_data: List[CustomerData]):
         raise HTTPException(
             status_code=500,
             detail=f"Batch prediction failed: {str(e)}"
+        )
+
+@app.post("/predict-iade", response_model=IadePredictionResponse)
+async def predict_iade_risk(iade_data: IadeData):
+    """
+    Predict return risk for an order
+    
+    Args:
+        iade_data: Order features
+        
+    Returns:
+        Prediction results including probability and confidence
+    """
+    try:
+        # Convert input data to numpy array
+        features = np.array([[
+            iade_data.discount,
+            iade_data.quantity,
+            iade_data.total_spending
+        ]])
+        
+        # Scale features
+        features_scaled = iade_scaler.transform(features)
+        
+        # Make prediction
+        risk_probability = float(iade_model.predict(features_scaled)[0][0])
+        is_risky = risk_probability > 0.5
+        confidence = abs(risk_probability - 0.5) * 2
+        
+        return IadePredictionResponse(
+            risk_probability=risk_probability,
+            is_risky=is_risky,
+            confidence=confidence
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(e)}"
         )
 
 if __name__ == "__main__":
