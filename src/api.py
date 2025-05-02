@@ -5,13 +5,13 @@ import pandas as pd
 from typing import List, Dict, Any
 import os
 from dotenv import load_dotenv
-from src.feature_engineering import FeatureEngineering, FeatureConfig
-from src.model import ChurnPredictor
+from src.churn.feature_engineering import FeatureEngineering, FeatureConfig
+from src.churn.model import ChurnPredictor
 import joblib
-from src.feature_engineering_iade import IadeFeatureEngineering, IadeFeatureConfig
-from src.model_iade import IadeRiskPredictor
-from src.model_product import ProductPurchasePredictor
-from src.feature_engineering_product import ProductFeatureEngineering
+from src.iade.feature_engineering import IadeFeatureEngineering, IadeFeatureConfig
+from src.iade.model import IadeRiskPredictor
+from src.product.model import ProductPurchasePredictor
+from src.product.feature_engineering import ProductFeatureEngineering
 import tensorflow as tf
 
 # Load environment variables

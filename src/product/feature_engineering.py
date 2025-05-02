@@ -6,7 +6,7 @@ from imblearn.over_sampling import SMOTE
 from typing import Tuple, Dict
 import os
 from sqlalchemy import create_engine, text
-from src.data_loader import DataLoader
+from src.common.data_loader import DataLoader
 
 class ProductFeatureEngineering:
     """Feature engineering for product purchase prediction"""

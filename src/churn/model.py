@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from sklearn.utils import class_weight
-from src.feature_engineering import FeatureEngineering, FeatureConfig
+from src.churn.feature_engineering import FeatureEngineering, FeatureConfig
 
 class ChurnPredictor:
     """Deep learning model for customer churn prediction"""

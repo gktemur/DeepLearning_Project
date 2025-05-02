@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Tuple
 import pandas as pd
 import numpy as np
-from src.data_loader import DataLoader
+from src.common.data_loader import DataLoader
 from sklearn.preprocessing import RobustScaler
 from sklearn.model_selection import train_test_split
 import joblib

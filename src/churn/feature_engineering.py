@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Tuple, List, Dict
 import pandas as pd
 import numpy as np
-from src.data_loader import DataLoader
+from src.common.data_loader import DataLoader
 from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import RobustScaler
