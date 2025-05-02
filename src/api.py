@@ -18,7 +18,7 @@ import tensorflow as tf
 load_dotenv()
 
 app = FastAPI(
-    title="Customer Churn Prediction API",
+    title="Customer Intelligence Prediction API",
     description="API for predicting customer churn using deep learning",
     version="1.0.0"
 )
