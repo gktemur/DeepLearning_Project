@@ -10,6 +10,9 @@ from src.model import ChurnPredictor
 import joblib
 from src.feature_engineering_iade import IadeFeatureEngineering, IadeFeatureConfig
 from src.model_iade import IadeRiskPredictor
+from src.model_product import ProductPurchasePredictor
+from src.feature_engineering_product import ProductFeatureEngineering
+import tensorflow as tf
 
 # Load environment variables
 load_dotenv()
@@ -29,6 +32,10 @@ scaler = None
 iade_feature_engineering = IadeFeatureEngineering()
 iade_model = None
 iade_scaler = None
+
+# Load model and feature engineering
+model_product = None
+feature_engineering_product = None
 
 class CustomerData(BaseModel):
     """Input data model for customer features"""
@@ -63,6 +70,22 @@ class IadePredictionResponse(BaseModel):
     risk_probability: float
     is_risky: bool
     confidence: float
+
+class CustomerFeatures(BaseModel):
+    """Customer features for prediction"""
+    customer_id: str
+    category_spending: Dict[str, float]  # Dictionary of category:spending pairs
+
+class ProductPrediction(BaseModel):
+    product_name: str
+    purchase_probability: float
+    recommendation: bool
+
+class PredictionResponseProduct(BaseModel):
+    """Response model for predictions"""
+    customer_id: str
+    predictions: List[ProductPrediction]
+    recommended_products: List[str]
 
 def load_model():
     """Load the trained model and scaler"""
@@ -119,6 +142,45 @@ async def startup_event():
     """Initialize models on startup"""
     load_model()
     load_iade_model()
+    
+    try:
+        # Initialize feature engineering
+        global feature_engineering_product, model_product
+        feature_engineering_product = ProductFeatureEngineering()
+        
+        # Initialize model with correct dimensions
+        model_product = ProductPurchasePredictor(input_dim=8)  # 8 categories
+        
+        # Load model if exists
+        model_paths = [
+            'models/best_product_model.keras',
+            'models/best_model.keras',
+            'models/product_model.keras'
+        ]
+        
+        for path in model_paths:
+            if os.path.exists(path):
+                try:
+                    model_product.model = tf.keras.models.load_model(path)
+                    print(f"Model loaded from {path}")
+                    break
+                except Exception as e:
+                    print(f"Error loading model from {path}: {str(e)}")
+        
+        # Load scaler if exists
+        scaler_path = 'models/product_scaler.joblib'
+        if os.path.exists(scaler_path):
+            try:
+                feature_engineering_product.scaler = joblib.load(scaler_path)
+                print(f"Scaler loaded from {scaler_path}")
+            except Exception as e:
+                print(f"Error loading scaler from {scaler_path}: {str(e)}")
+        
+    except Exception as e:
+        print(f"Error initializing product model: {str(e)}")
+        # Initialize empty model
+        model_product = ProductPurchasePredictor(input_dim=8)
+        model_product.model = model_product._build_model()
 
 @app.get("/")
 async def root():
@@ -128,7 +190,8 @@ async def root():
         "endpoints": {
             "/predict": "POST - Make churn predictions",
             "/health": "GET - Check API health",
-            "/predict-iade": "POST - Predict return risk for an order"
+            "/predict-iade": "POST - Predict return risk for an order",
+            "/predict-product": "POST - Predict product purchase probabilities"
         }
     }
 
@@ -136,9 +199,9 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     return {
-        "status": "healthy",
-        "model_loaded": model is not None,
-        "scaler_loaded": scaler is not None
+        "status": "ok",
+        "model_loaded": model_product.model is not None,
+        "scaler_loaded": feature_engineering_product.scaler is not None
     }
 
 @app.post("/predict", response_model=PredictionResponse)
@@ -284,6 +347,65 @@ async def predict_iade_risk(iade_data: IadeData):
             status_code=500,
             detail=f"Prediction failed: {str(e)}"
         )
+
+@app.post("/predict-product", response_model=PredictionResponseProduct)
+async def predict_product_purchase(customer_features: CustomerFeatures):
+    """Predict purchase probabilities for new products"""
+    if model_product.model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Model not loaded. Please train the model first."
+        )
+    
+    try:
+        # Prepare customer features
+        features = feature_engineering_product.prepare_customer_features(
+            customer_features.category_spending
+        )
+        
+        # Make predictions
+        predictions = model_product.predict(features)
+        
+        # Format response
+        product_names = ["SmartWatch_Pro", "SportRunner_X", "KitchenMaster_AI"]
+        product_predictions = []
+        recommended_products = []
+        
+        for i, (product_name, prob) in enumerate(zip(product_names, predictions[0])):
+            product_predictions.append(
+                ProductPrediction(
+                    product_name=product_name,
+                    purchase_probability=float(prob),
+                    recommendation=prob > 0.5
+                )
+            )
+            if prob > 0.5:
+                recommended_products.append(product_name)
+        
+        return PredictionResponseProduct(
+            customer_id=customer_features.customer_id,
+            predictions=product_predictions,
+            recommended_products=recommended_products
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error making prediction: {str(e)}"
+        )
+
+@app.get("/model/info")
+async def get_model_info():
+    """Get information about the model"""
+    if model is None:
+        raise HTTPException(status_code=500, detail="Model not loaded")
+    
+    return {
+        "input_dimension": model.input_dim,
+        "embedding_dimension": model.embedding_dim,
+        "number_of_products": model.n_products,
+        "model_architecture": model.model.summary()
+    }
 
 if __name__ == "__main__":
     import uvicorn

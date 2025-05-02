@@ -3,17 +3,18 @@ from tensorflow.keras import layers, models, callbacks
 import numpy as np
 from typing import Dict, List, Tuple
 import os
+import joblib
 
 class ProductPurchasePredictor:
-    """Neural network model for product purchase prediction with collaborative filtering"""
+    """Neural network model for predicting new product purchase probabilities"""
     
-    def __init__(self, input_dim: int, embedding_dim: int = 32, n_products: int = 3):
+    def __init__(self, input_dim: int = 8, embedding_dim: int = 32, n_products: int = 3):
         self.input_dim = input_dim
         self.embedding_dim = embedding_dim
         self.n_products = n_products
         self.model = None
-        self.autoencoder = None
         self.history = None
+        self.scaler = None
         
         # Print model configuration
         print(f"\nModel Configuration:")
@@ -21,55 +22,30 @@ class ProductPurchasePredictor:
         print(f"Embedding dimension: {embedding_dim}")
         print(f"Number of products: {n_products}")
     
-    def _build_autoencoder(self) -> tf.keras.Model:
-        """Build autoencoder for customer embeddings"""
-        # Encoder
-        encoder_input = layers.Input(shape=(self.input_dim,))
-        x = layers.Dense(128, activation='relu')(encoder_input)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.3)(x)
-        encoded = layers.Dense(self.embedding_dim, activation='relu')(x)
-        
-        # Decoder
-        x = layers.Dense(128, activation='relu')(encoded)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.3)(x)
-        decoded = layers.Dense(self.input_dim, activation='sigmoid')(x)
-        
-        # Autoencoder model
-        autoencoder = models.Model(encoder_input, decoded)
-        autoencoder.compile(optimizer='adam', loss='mse')
-        
-        return autoencoder
-    
     def _build_model(self) -> tf.keras.Model:
         """Build the neural network model"""
         # Input layer
         inputs = layers.Input(shape=(self.input_dim,))
         
-        # Autoencoder for customer representation
-        encoded = layers.Dense(64, activation='relu')(inputs)
-        encoded = layers.BatchNormalization()(encoded)
-        encoded = layers.Dropout(0.3)(encoded)
-        
-        decoded = layers.Dense(self.input_dim, activation='sigmoid')(encoded)
-        
-        # Main prediction network
-        x = layers.Dense(128, activation='relu')(inputs)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.4)(x)
-        
-        x = layers.Dense(64, activation='relu')(x)
+        # Feature extraction
+        x = layers.Dense(64, activation='relu')(inputs)
         x = layers.BatchNormalization()(x)
         x = layers.Dropout(0.3)(x)
         
-        # Multi-label output
+        x = layers.Dense(32, activation='relu')(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.3)(x)
+        
+        # Product-specific branches
         outputs = []
         for _ in range(self.n_products):
-            product_output = layers.Dense(32, activation='relu')(x)
-            product_output = layers.BatchNormalization()(product_output)
-            product_output = layers.Dropout(0.2)(product_output)
-            product_output = layers.Dense(1, activation='sigmoid')(product_output)
+            # Product-specific features
+            product_branch = layers.Dense(16, activation='relu')(x)
+            product_branch = layers.BatchNormalization()(product_branch)
+            product_branch = layers.Dropout(0.2)(product_branch)
+            
+            # Product purchase probability
+            product_output = layers.Dense(1, activation='sigmoid')(product_branch)
             outputs.append(product_output)
         
         # Create model
@@ -78,8 +54,8 @@ class ProductPurchasePredictor:
         # Compile model
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),
-            loss='binary_crossentropy',
-            metrics=['accuracy']
+            loss=['binary_crossentropy'] * self.n_products,
+            metrics=['accuracy'] * self.n_products
         )
         
         return model
@@ -96,25 +72,7 @@ class ProductPurchasePredictor:
         print(f"X_val shape: {X_val.shape}")
         print(f"y_val shape: {y_val.shape}")
         
-        # First train autoencoder
-        self.autoencoder = self._build_autoencoder()
-        self.autoencoder.fit(
-            X_train, X_train,
-            validation_data=(X_val, X_val),
-            epochs=epochs//2,
-            batch_size=batch_size,
-            verbose=0
-        )
-        
-        # Get encoded features
-        encoder = models.Model(
-            self.autoencoder.input,
-            self.autoencoder.layers[-3].output
-        )
-        X_train_encoded = encoder.predict(X_train)
-        X_val_encoded = encoder.predict(X_val)
-        
-        # Build and train main model
+        # Build model
         self.model = self._build_model()
         
         # Calculate class weights
@@ -138,36 +96,39 @@ class ProductPurchasePredictor:
             ),
             callbacks.ModelCheckpoint(
                 filepath='models/best_product_model.keras',
-                monitor='val_auc',
+                monitor='val_loss',
                 save_best_only=True,
-                mode='max'
+                mode='min'
             )
         ]
         
+        # Split y_train and y_val into separate arrays for each product
+        y_train_split = [y_train[:, i] for i in range(self.n_products)]
+        y_val_split = [y_val[:, i] for i in range(self.n_products)]
+        
         # Train model
         self.history = self.model.fit(
-            X_train_encoded, y_train,
-            validation_data=(X_val_encoded, y_val),
+            X_train, y_train_split,
+            validation_data=(X_val, y_val_split),
             epochs=epochs,
             batch_size=batch_size,
-            class_weight=class_weights,
             callbacks=callbacks_list,
             verbose=1
         )
+        
+        # Save the final model
+        self.save_model()
     
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Make predictions for multiple products"""
         if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
             
-        # Get encoded features
-        encoder = models.Model(
-            self.autoencoder.input,
-            self.autoencoder.layers[-3].output
-        )
-        X_encoded = encoder.predict(X)
+        # Get predictions for each product
+        predictions = self.model.predict(X)
         
-        return self.model.predict(X_encoded)
+        # Combine predictions into a single array
+        return np.column_stack(predictions)
     
     def evaluate(self, X_test: np.ndarray, y_test: np.ndarray) -> Dict:
         """Evaluate model performance"""
@@ -176,31 +137,40 @@ class ProductPurchasePredictor:
             
         # Get predictions
         y_pred = self.predict(X_test)
-        y_pred_binary = (y_pred > 0.5).astype(int)
         
         # Calculate metrics for each product
-        metrics = {
-            'accuracy': np.mean(y_pred_binary == y_test),
-            'auc': tf.keras.metrics.AUC()(y_test, y_pred).numpy(),
-            'confusion_matrix': tf.math.confusion_matrix(
-                y_test.flatten(), y_pred_binary.flatten(), num_classes=2
-            ).numpy().tolist()
-        }
+        metrics = {}
+        for i in range(self.n_products):
+            product_metrics = {
+                'accuracy': tf.keras.metrics.binary_accuracy(y_test[:, i], y_pred[:, i]).numpy().mean(),
+                'auc': tf.keras.metrics.AUC()(y_test[:, i], y_pred[:, i]).numpy(),
+                'confusion_matrix': tf.math.confusion_matrix(
+                    y_test[:, i], 
+                    (y_pred[:, i] > 0.5).astype(int),
+                    num_classes=2
+                ).numpy().tolist()
+            }
+            metrics[f'product_{i+1}'] = product_metrics
         
         return metrics
     
-    def get_customer_embeddings(self, X: np.ndarray) -> np.ndarray:
-        """Get customer embeddings from the autoencoder"""
-        if self.autoencoder is None:
-            raise ValueError("Model not trained. Call train() first.")
-            
-        # Get the encoder output
-        encoder = models.Model(
-            self.autoencoder.input,
-            self.autoencoder.layers[-3].output
-        )
+    def save_model(self):
+        """Save the trained model"""
+        # Create models directory if it doesn't exist
+        os.makedirs('models', exist_ok=True)
         
-        return encoder.predict(X)
+        # Save the model
+        model_path = 'models/best_product_model.keras'
+        self.model.save(model_path)
+        print(f"\nModel saved to {model_path}")
+        
+        # Save the scaler if it exists
+        if self.scaler is not None:
+            scaler_path = 'models/product_scaler.joblib'
+            joblib.dump(self.scaler, scaler_path)
+            print(f"Scaler saved to {scaler_path}")
+        else:
+            print("Warning: No scaler to save")
     
     def find_similar_customers(self, customer_embeddings: np.ndarray,
                              target_customer_idx: int,

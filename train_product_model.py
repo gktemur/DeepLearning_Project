@@ -11,46 +11,38 @@ import json
 import pandas as pd
 
 def plot_training_history(history):
-    """Plot training history"""
-    plt.figure(figsize=(12, 4))
-    
-    # Plot loss
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['loss'], label='Training Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.title('Model Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    
-    # Plot accuracy
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['accuracy'], label='Training Accuracy')
-    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-    plt.title('Model Accuracy')
+    """Plot training history for multi-output model"""
+    plt.figure(figsize=(12, 6))
+
+    for key in history.history:
+        if 'accuracy' in key:
+            linestyle = '--' if key.startswith('val_') else '-'
+            plt.plot(history.history[key], linestyle=linestyle, label=key)
+
+    plt.title('Accuracy per Output')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.legend()
-    
     plt.tight_layout()
     plt.savefig('models/product_training_history.png')
     plt.close()
 
-def plot_confusion_matrix(cm):
-    """Plot confusion matrix"""
-    plt.figure(figsize=(8, 6))
+def plot_confusion_matrix(cm, title='Confusion Matrix', filename='confusion_matrix.png'):
+    """Plot a single confusion matrix"""
+    plt.figure(figsize=(6, 5))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-    plt.title('Confusion Matrix')
+    plt.title(title)
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
-    plt.savefig('models/product_confusion_matrix.png')
+    plt.tight_layout()
+    plt.savefig(f'models/{filename}')
     plt.close()
 
-def plot_roc_curve(y_test, y_pred):
+def plot_roc_curve(y_test, y_pred, title='ROC Curve', filename='roc_curve.png'):
     """Plot ROC curve"""
     fpr, tpr, _ = roc_curve(y_test, y_pred)
     roc_auc = auc(fpr, tpr)
-    
+
     plt.figure(figsize=(8, 6))
     plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
@@ -58,16 +50,15 @@ def plot_roc_curve(y_test, y_pred):
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.title(title)
     plt.legend(loc="lower right")
-    plt.savefig('models/product_roc_curve.png')
+    plt.savefig(f'models/{filename}')
     plt.close()
 
 def plot_feature_distributions(X_train, y_train, feature_names):
     """Plot boxplots of feature distributions per product"""
     os.makedirs('models', exist_ok=True)
 
-    # Convert back to DataFrame if needed
     if not isinstance(X_train, pd.DataFrame):
         X_train = pd.DataFrame(X_train, columns=feature_names)
     if not isinstance(y_train, pd.DataFrame):
@@ -88,53 +79,47 @@ def plot_feature_distributions(X_train, y_train, feature_names):
 def analyze_shap(model, X_train, X_test, feature_names):
     """Perform SHAP analysis"""
     try:
-        # Create explainer
         explainer = ModelExplainer(model, feature_names)
         explainer.create_explainer(X_train)
-        
-        # Plot global feature importance
-        explainer.plot_global_importance(
-            X_test,
-            save_path='models/product_shap_global.png'
-        )
-        
-        # Plot local importance for a few examples
+
+        explainer.plot_global_importance(X_test, save_path='models/product_shap_global.png')
+
         for i in range(min(3, len(X_test))):
             try:
-                # Save force plot as HTML
-                explainer.plot_local_importance(
-                    X_test,
-                    index=i,
-                    save_path=f'models/product_shap_local_{i}.html'
-                )
-                
-                # Save waterfall plot as PNG
-                explainer.plot_waterfall(
-                    X_test,
-                    index=i,
-                    save_path=f'models/product_shap_waterfall_{i}.png'
-                )
+                explainer.plot_local_importance(X_test, index=i, save_path=f'models/product_shap_local_{i}.html')
+                explainer.plot_waterfall(X_test, index=i, save_path=f'models/product_shap_waterfall_{i}.png')
                 print(f"Created SHAP plots for example {i}")
             except Exception as e:
                 print(f"Error creating SHAP plots for example {i}: {str(e)}")
                 continue
-        
-        # Get SHAP values for test set
+
         try:
             shap_values, explanation = explainer.explain_prediction(X_test)
-            
-            # Save explanation to file
             with open('models/product_shap_explanation.json', 'w') as f:
                 json.dump(explanation, f, indent=4)
             print("Created SHAP explanation file")
         except Exception as e:
             print(f"Error creating SHAP explanation: {str(e)}")
             explanation = None
-        
+
         return explainer
     except Exception as e:
         print(f"Error in SHAP analysis: {str(e)}")
         return None
+
+def convert_numpy_to_python(obj):
+    """Convert NumPy types to Python native types for JSON serialization"""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_to_python(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_to_python(item) for item in obj]
+    return obj
 
 def main():
     # Create models directory if it doesn't exist
@@ -153,9 +138,6 @@ def main():
     print(f"X_test shape: {X_test.shape}")
     print(f"y_test shape: {y_test.shape}")
     
-    # Plot feature distributions
-    plot_feature_distributions(X_train.values, y_train.values, feature_engineering.category_columns)
-    
     # Split training data into train and validation
     X_train, X_val, y_train, y_val = train_test_split(
         X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
@@ -163,6 +145,9 @@ def main():
     
     # Initialize model with correct input dimension
     model = ProductPurchasePredictor(input_dim=X_train.shape[1])
+    
+    # Set the scaler from feature engineering
+    model.scaler = feature_engineering.scaler
     
     # Train model with cost-sensitive learning
     model.train(
@@ -181,47 +166,59 @@ def main():
     # Evaluate model
     metrics = model.evaluate(X_test.values, y_test.values)
     
-    # Plot confusion matrix
-    plot_confusion_matrix(np.array(metrics['confusion_matrix']))
+    # Convert metrics to Python native types
+    metrics_python = convert_numpy_to_python(metrics)
     
-    # Plot ROC curve
+    # Save metrics
+    with open('models/product_model_metrics.json', 'w') as f:
+        json.dump(metrics_python, f, indent=4)
+    
+    print("\nTraining completed successfully!")
+    print(f"Model saved to: models/best_product_model.keras")
+    print(f"Metrics saved to: models/product_model_metrics.json")
+
+    # Plot confusion matrices for each product
+    for i, (product_name, product_metrics) in enumerate(metrics.items(), start=1):
+        cm = product_metrics['confusion_matrix']
+        plot_confusion_matrix(
+            cm,
+            title=f'Confusion Matrix - Product {i}',
+            filename=f'product_{i}_confusion_matrix.png'
+        )
+
+    # Plot ROC for the first product as example
     y_pred = model.predict(X_test.values)
-    plot_roc_curve(y_test.values, y_pred)
-    
-    # Perform SHAP analysis
-    explainer = analyze_shap(
+    plot_roc_curve(
+        y_test.values[:, 0],
+        y_pred[:, 0],
+        title='ROC Curve - Product 1',
+        filename='product_1_roc_curve.png'
+    )
+
+    # SHAP analysis
+    _ = analyze_shap(
         model.model,
         X_train.values,
         X_test.values,
         feature_engineering.category_columns
     )
-    
-    # Get customer embeddings and find similar customers
-    customer_embeddings = model.get_customer_embeddings(X_test.values)
-    similar_customers = model.find_similar_customers(
-        customer_embeddings,
-        target_customer_idx=0,  # Example: first customer in test set
-        n_similar=5
-    )
-    
+
     print("\nModel Evaluation:")
-    print(f"Test AUC: {metrics['auc']:.4f}")
-    print(f"Test Accuracy: {metrics['accuracy']:.4f}")
-    print("\nConfusion Matrix:")
-    print(np.array(metrics['confusion_matrix']))
-    
-    print("\nSimilar Customers (indices):")
-    print(similar_customers)
-    
+    for i, (product_name, product_metrics) in enumerate(metrics.items(), start=1):
+        print(f"\n{product_name}:")
+        print(f"  AUC: {product_metrics['auc']:.4f}")
+        print(f"  Accuracy: {product_metrics['accuracy']:.4f}")
+        print(f"  Confusion Matrix:\n{np.array(product_metrics['confusion_matrix'])}")
+
     print("\nPlots and analysis saved in the 'models' directory:")
     print("- product_training_history.png")
-    print("- product_confusion_matrix.png")
-    print("- product_roc_curve.png")
+    print("- product_1_roc_curve.png")
+    print("- product_[1-3]_confusion_matrix.png")
     print("- product_feature_distributions.png")
     print("- product_shap_global.png")
-    print("- product_shap_local_*.html (HTML files for force plots)")
-    print("- product_shap_waterfall_*.png (Waterfall plots)")
+    print("- product_shap_local_*.html")
+    print("- product_shap_waterfall_*.png")
     print("- product_shap_explanation.json")
 
 if __name__ == "__main__":
-    main() 
+    main()

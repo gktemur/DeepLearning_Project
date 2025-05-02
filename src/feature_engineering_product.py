@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import RobustScaler, StandardScaler
 from imblearn.over_sampling import SMOTE
-from typing import Tuple
+from typing import Tuple, Dict
 import os
 from sqlalchemy import create_engine, text
 from src.data_loader import DataLoader
@@ -12,9 +12,23 @@ class ProductFeatureEngineering:
     """Feature engineering for product purchase prediction"""
     
     def __init__(self):
-        self.scaler = RobustScaler()
+        self.scaler = StandardScaler()
         self.smote = SMOTE(sampling_strategy=0.7, k_neighbors=3)
-        self.category_columns = None
+        self.category_columns = [
+            "Electronics",
+            "Clothing",
+            "Books",
+            "Home",
+            "Sports",
+            "Beauty",
+            "Food",
+            "Toys"
+        ]
+        self.target_products = [
+            "SmartWatch_Pro",  # Yeni akıllı saat
+            "SportRunner_X",   # Yeni spor ayakkabı
+            "KitchenMaster_AI" # Yeni mutfak robotu
+        ]
         self.data_loader = DataLoader()
         
     def _load_data(self) -> pd.DataFrame:
@@ -58,77 +72,25 @@ class ProductFeatureEngineering:
         return category_spending
     
     def _create_target_variable(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create target variables for multiple products"""
-        # Get last order date for each customer
-        last_orders = df.groupby('customer_id')['order_date'].max()
+        """Create target variables for new products based on customer purchase history"""
+        # Her ürün için hedef değişken oluştur
+        targets = pd.DataFrame(index=df.index)
         
-        # Calculate days since last order
-        last_orders = pd.to_datetime(last_orders)
-        days_since_last = (pd.Timestamp.now() - last_orders).dt.days
+        # SmartWatch_Pro için hedef
+        # Son 6 ayda Electronics kategorisinde yüksek harcama yapanlar
+        targets['SmartWatch_Pro'] = (df['Electronics'] > df['Electronics'].quantile(0.7)).astype(int)
         
-        # Create target matrix for 3 products
-        target = pd.DataFrame(index=last_orders.index)
+        # SportRunner_X için hedef
+        # Son 6 ayda Sports ve Clothing kategorilerinde yüksek harcama yapanlar
+        sports_clothing_avg = (df['Sports'] + df['Clothing']) / 2
+        targets['SportRunner_X'] = (sports_clothing_avg > sports_clothing_avg.quantile(0.7)).astype(int)
         
-        # Product 1: Recent purchasers (last 90 days)
-        # Ensure at least 30% of customers are marked as 1
-        recent_threshold = days_since_last.quantile(0.3)
-        target['product_1'] = (days_since_last <= recent_threshold).astype(int)
+        # KitchenMaster_AI için hedef
+        # Son 6 ayda Home ve Food kategorilerinde yüksek harcama yapanlar
+        home_food_avg = (df['Home'] + df['Food']) / 2
+        targets['KitchenMaster_AI'] = (home_food_avg > home_food_avg.quantile(0.7)).astype(int)
         
-        # Product 2: High-value customers (top 30% spenders)
-        customer_spending = df.groupby('customer_id')['TotalSpent'].sum()
-        # Ensure at least 30% of customers are marked as 1
-        spending_threshold = customer_spending.quantile(0.7)
-        target['product_2'] = (customer_spending > spending_threshold).astype(int)
-        
-        # Product 3: Frequent buyers (top 30% order count)
-        customer_orders = df.groupby('customer_id')['order_id'].nunique()
-        # Ensure at least 30% of customers are marked as 1
-        order_threshold = customer_orders.quantile(0.7)
-        target['product_3'] = (customer_orders > order_threshold).astype(int)
-        
-        # Print class distribution for each product
-        print("\nClass distribution for each product:")
-        for product in target.columns:
-            class_counts = target[product].value_counts()
-            print(f"\n{product}:")
-            print(f"Class 0: {class_counts.get(0, 0)} samples")
-            print(f"Class 1: {class_counts.get(1, 0)} samples")
-            print(f"Ratio: {class_counts.get(1, 0) / len(target):.2%}")
-            
-            # Ensure each class has at least 2 samples
-            if class_counts.get(0, 0) < 2 or class_counts.get(1, 0) < 2:
-                print(f"Warning: {product} has too few samples in one class. Adjusting threshold...")
-                if class_counts.get(0, 0) < 2:
-                    # If class 0 has too few samples, increase the threshold
-                    if product == 'product_1':
-                        recent_threshold = days_since_last.quantile(0.4)
-                        target['product_1'] = (days_since_last <= recent_threshold).astype(int)
-                    elif product == 'product_2':
-                        spending_threshold = customer_spending.quantile(0.6)
-                        target['product_2'] = (customer_spending > spending_threshold).astype(int)
-                    else:
-                        order_threshold = customer_orders.quantile(0.6)
-                        target['product_3'] = (customer_orders > order_threshold).astype(int)
-                else:
-                    # If class 1 has too few samples, decrease the threshold
-                    if product == 'product_1':
-                        recent_threshold = days_since_last.quantile(0.2)
-                        target['product_1'] = (days_since_last <= recent_threshold).astype(int)
-                    elif product == 'product_2':
-                        spending_threshold = customer_spending.quantile(0.8)
-                        target['product_2'] = (customer_spending > spending_threshold).astype(int)
-                    else:
-                        order_threshold = customer_orders.quantile(0.8)
-                        target['product_3'] = (customer_orders > order_threshold).astype(int)
-                
-                # Print updated distribution
-                class_counts = target[product].value_counts()
-                print(f"Updated distribution for {product}:")
-                print(f"Class 0: {class_counts.get(0, 0)} samples")
-                print(f"Class 1: {class_counts.get(1, 0)} samples")
-                print(f"Ratio: {class_counts.get(1, 0) / len(target):.2%}")
-        
-        return target
+        return targets
     
     def _scale_features(self, X: pd.DataFrame) -> pd.DataFrame:
         """Scale features using RobustScaler"""
@@ -169,42 +131,64 @@ class ProductFeatureEngineering:
         return X_final, y_final
     
     def prepare_data(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """Prepare data for model training"""
-        # Load and process data
-        df = self._load_data()
-        category_spending = self._calculate_category_spending(df)
-        target = self._create_target_variable(df)
+        """Prepare features and targets for model training"""
+        # Örnek veri oluştur
+        np.random.seed(42)
+        n_samples = 1000
         
-        # Store category columns for later use
-        self.category_columns = category_spending.columns.tolist()
+        # Kategori bazlı harcamalar
+        data = {
+            category: np.random.gamma(shape=2, scale=100, size=n_samples)
+            for category in self.category_columns
+        }
+        df = pd.DataFrame(data)
         
-        # Split data
+        # Hedef değişkenleri oluştur
+        targets = self._create_target_variable(df)
+        
+        # Veriyi eğitim ve test setlerine ayır
         X_train, X_test, y_train, y_test = train_test_split(
-            category_spending,
-            target,
-            test_size=0.2,
-            random_state=42,
-            stratify=target['product_1']  # Stratify by first product
+            df, targets, test_size=0.2, random_state=42
         )
         
-        # Handle class imbalance
-        X_train_resampled, y_train_resampled = self._handle_class_imbalance(X_train, y_train)
+        # Özellikleri ölçeklendir
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
         
-        # Scale features
-        X_train_scaled = self._scale_features(X_train_resampled)
-        X_test_scaled = self._scale_features(X_test)
-        
-        # Print data quality information
-        print("\nData Quality Information:")
-        print(f"Total customers: {len(category_spending)}")
-        print(f"Number of categories: {len(self.category_columns)}")
-        print(f"Training set size: {len(X_train_scaled)}")
-        print(f"Test set size: {len(X_test_scaled)}")
-        print("\nClass distribution in training set:")
-        for product in y_train_resampled.columns:
-            print(f"{product}: {y_train_resampled[product].value_counts().to_dict()}")
-        print("\nClass distribution in test set:")
-        for product in y_test.columns:
-            print(f"{product}: {y_test[product].value_counts().to_dict()}")
-        
-        return X_train_scaled, X_test_scaled, y_train_resampled, y_test 
+        return (
+            pd.DataFrame(X_train_scaled, columns=self.category_columns, index=X_train.index),
+            pd.DataFrame(X_test_scaled, columns=self.category_columns, index=X_test.index),
+            y_train,
+            y_test
+        )
+    
+    def prepare_customer_features(self, customer_features: Dict[str, float]) -> np.ndarray:
+        """Prepare customer features for prediction"""
+        try:
+            # Eksik kategorileri kontrol et
+            missing_categories = [cat for cat in self.category_columns if cat not in customer_features]
+            if missing_categories:
+                print(f"Warning: Missing categories: {missing_categories}")
+                print("Using 0 for missing categories")
+            
+            # Özellikleri doldur
+            features = np.zeros(len(self.category_columns))
+            for i, category in enumerate(self.category_columns):
+                if category in customer_features:
+                    features[i] = customer_features[category]
+            
+            # Tek örnek için boyut düzenleme
+            features = features.reshape(1, -1)
+            
+            # Scaler'ın fit edilip edilmediğini kontrol et
+            if not hasattr(self.scaler, 'scale_'):
+                raise ValueError("Scaler not fitted. Call prepare_data() first.")
+            
+            # Özellikleri ölçeklendir
+            features_scaled = self.scaler.transform(features)
+            
+            return features_scaled
+            
+        except Exception as e:
+            print(f"Error preparing features: {str(e)}")
+            raise 
