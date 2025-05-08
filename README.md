@@ -26,6 +26,7 @@ Bu proje, Northwind veritabanındaki müşteri verilerini kullanarak, müşteril
 ## Kurulum
 
 1. Gerekli bağımlılıkları yükleyin:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -35,6 +36,7 @@ pip install -r requirements.txt
 ## Kullanım
 
 1. Veri hazırlama ve özellik mühendisliği:
+
 ```python
 from src.feature_engineering import FeatureEngineering, FeatureConfig
 
@@ -43,6 +45,7 @@ X, y = feature_engineering.prepare_data()
 ```
 
 2. Model eğitimi ve değerlendirme:
+
 ```python
 from src.model import ChurnPredictor
 
@@ -70,11 +73,13 @@ metrics = model.evaluate(X_test, y_test)
 ## Geliştirme
 
 1. Feature Engineering:
+
    - Yeni özellikler ekleme
    - Özellik seçimi
    - Özellik ölçeklendirme
 
 2. Model Geliştirme:
+
    - Hiperparametre optimizasyonu
    - Model mimarisi değişiklikleri
    - Ensemble yöntemleri
@@ -83,3 +88,10 @@ metrics = model.evaluate(X_test, y_test)
    - Cross-validation
    - Model karşılaştırmaları
    - A/B testleri
+
+Katkıda Bulunanlar
+
+- Gamze Kevser Temur
+- İlayda Akyüz
+- Rabia Gülizar Tuncer
+- Buse Erarslan
