@@ -91,7 +91,7 @@ metrics = model.evaluate(X_test, y_test)
 
 Katkıda Bulunanlar
 
-- Gamze Kevser Temur
+- Gamze Kevser Temür
 - İlayda Akyüz
 - Rabia Gülizar Tuncer
 - Buse Erarslan
